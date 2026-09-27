@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#080B16" />
+<title>帐篷 · Tents 树与帐篷推理</title>
+<meta name="description" content="Tents 帐篷：每棵树旁边要有一顶帐篷，帐篷之间连斜角都不能相邻，每行每列的数字写着这一行里放了几顶。每局唯一解、每局都能用逻辑推到底，提示只说推得出的那一步。" />
+<!-- Inline icon: without it the browser probes the Pages domain root for /favicon.ico and logs a 404. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23080B16'/%3E%3Cpath d='M6 25 L13 8 L20 25 Z' fill='none' stroke='%237BB8FF' stroke-width='2.8' stroke-linejoin='round'/%3E%3Cpath d='M24 25 v-8 M21 19 q3 -5 6 0' stroke='%238FA6CC' stroke-width='2.4' stroke-linecap='round' fill='none'/%3E%3Ccircle cx='13' cy='20' r='2.6' fill='%23080B16' stroke='%23FFC85C' stroke-width='2'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="css/game.css" />
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <h1>帐篷</h1>
+      <p class="sub">Tents · 树与帐篷</p>
+    </div>
+    <div class="top-actions">
+      <button id="btn-sound" class="ghost" type="button" aria-pressed="true">音效 开</button>
+      <button id="btn-motion" class="ghost" type="button" aria-pressed="false">动效 全</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="view-menu" class="view">
+      <div class="menu-hero">
+        <h2>每棵树旁边要有一顶帐篷，帐篷之间连斜角都不能碰上</h2>
+        <p>
+          树占住格子，帐篷只能扎在它上下左右四格里；两顶帐篷八格之内不能互碰，斜角也算。
+          行和列边的数字写着这一行、这一列各有几顶帐篷，没有数字的边不作限制——但每棵树都得有帐。
+          这里没有运气题：每一局都只有一个答案，也每一局都能靠逻辑推到底。
+        </p>
+      </div>
+
+      <div class="menu-cols">
+        <div class="col">
+          <h3 class="col-title">选一档</h3>
+          <div id="tier-list" class="tiers"></div>
+          <div id="resume-card" class="resume" hidden>
+            <div class="resume-txt">
+              <strong id="resume-name">未完成的牌局</strong>
+              <span id="resume-meta"></span>
+            </div>
+            <button id="btn-resume" class="primary" type="button">继续</button>
+          </div>
+        </div>
+
+        <div class="col">
+          <h3 class="col-title">纪录（同档比：先看不求提示几次，再看步数，最后看时间）</h3>
+          <ul id="record-list" class="records"></ul>
+
+          <h3 class="col-title">你会用到的五条规则</h3>
+          <ol class="rules">
+            <li><b>无树不扎营</b>：四边没有树的格子，帐篷无处可配，只能是草地。</li>
+            <li><b>一帐八周空</b>：这里有一顶帐篷，它八格之内（斜角也算）都不许再有。</li>
+            <li><b>行列封顶</b>：数字已经凑满，这一行剩下的格子都得留成草地。</li>
+            <li><b>只差这些</b>：还差几顶，而只剩几格可放——那几格都必须扎营。</li>
+            <li><b>树唯一落点</b>：这棵树旁只剩一格还能扎营，帐篷只能在这里。</li>
+          </ol>
+          <p class="rules-note">五条都只数一行的账或一棵树的账：它们写下的每一格，在盘面的<b>每一个解</b>里都成立。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-game" class="view" hidden>
+      <div class="stage">
+        <div class="stage-head">
+          <span id="stat-name" class="puzzle-name">—</span>
+          <span id="stat-tier" class="chip">—</span>
+          <span id="stat-time" class="chip mono">00:00</span>
+        </div>
+        <div id="board-wrap">
+          <canvas id="board" data-mode="tent" role="img" aria-label="帐篷棋盘：点击格子放帐篷或草地"></canvas>
+          <div id="win-veil" hidden>
+            <div class="win-card">
+              <h3>每棵树都有帐，每个数字都凑齐了</h3>
+              <p id="win-meta"></p>
+              <p id="win-record" class="win-record"></p>
+              <div class="win-actions">
+                <button id="btn-again" class="primary" type="button">再来一局</button>
+                <button id="btn-menu-2" class="ghost" type="button">回选档</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p id="state-line" class="conflict-line" aria-live="polite"></p>
+      </div>
+
+      <aside class="panel">
+        <div class="modes" role="group" aria-label="这一笔放什么">
+          <button id="btn-mode-tent" class="mode" type="button" aria-pressed="true" aria-label="放帐篷">▲ 帐篷</button>
+          <button id="btn-mode-grass" class="mode" type="button" aria-pressed="false" aria-label="确认这里是草地">· 草地</button>
+        </div>
+        <div class="acts">
+          <button id="btn-hint" class="primary" type="button">提示<span class="mono" id="hint-count">0</span></button>
+          <button id="btn-undo" class="ghost" type="button">撤销</button>
+          <button id="btn-new" class="ghost" type="button">换一局</button>
+          <button id="btn-menu" class="ghost" type="button">回选档</button>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><span>步数</span><b id="stat-moves" class="mono">0</b></div>
+          <div class="stat"><span>提示</span><b id="stat-hints" class="mono">0</b></div>
+          <div class="stat"><span>已定格</span><b id="stat-filled" class="mono">0/0</b></div>
+          <div class="stat"><span>待定格</span><b id="stat-remaining" class="mono">0</b></div>
+          <div class="stat"><span>凑齐的数</span><b id="stat-satisfied" class="mono">0/0</b></div>
+          <div class="stat"><span>冲突</span><b id="stat-conflicts" class="mono">0</b></div>
+          <div class="stat"><span>难度实测</span><b id="stat-score" class="mono">—</b></div>
+        </div>
+
+        <div class="hint-box">
+          <h4 id="hint-rule">提示理由</h4>
+          <p id="hint-line">按 <b>提示</b> 会说出当前能推的一格，以及它依据哪条规则。</p>
+        </div>
+
+        <div class="legend">
+          <span><i class="sw sw-good"></i>帮到的格</span>
+          <span><i class="sw sw-pending"></i>两头都还没凑齐</span>
+          <span><i class="sw sw-bad"></i>撞破数字</span>
+          <span><i class="sw sw-empty"></i>待定格</span>
+          <span><i class="sw sw-done"></i>数字凑齐的边</span>
+        </div>
+        <p class="keyhint"><b>拖动</b> 连续放同一笔 · <b>从自己的记号上起笔</b> 就是擦 · <b>T</b> 帐篷 · <b>G</b> 草地 · <b>H</b> 提示 · <b>Z</b> 撤销 · <b>M</b> 换笔</p>
+      </aside>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>每局唯一解 · 每局可用逻辑推到底 · 提示只给推得出的一步 — 由 <code>tools/verify.sh</code> 在真实浏览器里逐条断言。</span>
+    <button id="btn-reset" class="link" type="button">清空存档</button>
+  </footer>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "name": "tents",
+  "version": "1.0.0",
+  "description": "帐篷 Tents — 零猜测树与帐篷推理. 出题时由铅笔求解器实测：每一局都唯一可解、且只数行列表和每棵树的账就能推到底, 难度分与档位区间都是量出来的.",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs 5253",
+    "electron": "electron .",
+    "test": "node tools/engine-test.mjs",
+    "balance": "node tools/balance.mjs",
+    "verify": "bash tools/verify.sh",
+    "check": "for f in js/*.js js/*/*.js; do node --check \"$f\" || exit 1; done && node --check server.cjs && node --check electron/main.cjs && for f in tools/*.mjs tools/scenarios.js; do node --check \"$f\" || exit 1; done && echo OK"
+  },
+  "keywords": [
+    "game",
+    "puzzle",
+    "tents",
+    "tents-and-trees",
+    "logic",
+    "deduction",
+    "no-guess",
+    "procedural",
+    "web",
+    "electron"
+  ],
+  "author": "z-biz-game",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
