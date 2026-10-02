@@ -391,6 +391,20 @@ def palette_drift():
 
 
 REF_SOURCES = ['index.html', os.path.join('css', 'game.css'), 'manifest.webmanifest']
+# 社交卡只被抓取机器人读，离线首开用不到它；写明白，免得下一个人以为是漏项。
+OFFLINE_EXEMPT = {'assets/img/og-cover.png'}
+
+
+def precached():
+    """sw.js 的 PRECACHE 清单（手写的，所以正因为手写才要机器对）。"""
+    p = os.path.join(ROOT, 'sw.js')
+    if not os.path.isfile(p):
+        return set()
+    body = open(p, encoding='utf-8').read()
+    block = re.search(r'const PRECACHE = \[([\s\S]*?)\];', body)
+    if not block:
+        return set()
+    return set(re.findall(r"['\"]\./(assets/[^'\"]+\.png)['\"]", block.group(1)))
 
 
 def broken_refs():
@@ -411,6 +425,12 @@ def broken_refs():
     return sorted(refs), out
 
 
+def offline_miss(refs):
+    """被 html/css 点名、却没进 sw.js PRECACHE 的资产：离线首开就是缺件。"""
+    have = precached()
+    return sorted(r for r in refs if r not in have and r not in OFFLINE_EXEMPT)
+
+
 def check(outdir):
     rows, bad = [], []
     for base, _, files in os.walk(ROOT):
@@ -429,15 +449,18 @@ def check(outdir):
         print('%-46s %4dx%-4d %8d B' % r)
     refs, miss = broken_refs()
     drift = palette_drift()
+    miss_off = offline_miss(refs)
     for m in miss:
         print('  引用断链：%s' % m)
     for d in drift:
         print('  色板漂移：%s' % d)
+    for m in miss_off:
+        print('  离线缺件：%s 被引用但没进 sw.js PRECACHE' % m)
     print('PNG 文件 %d 张，坏 %d 张，边长≥180 的 %d 张' % (len(rows), len(bad),
           sum(1 for r in rows if min(r[1], r[2]) >= 180)))
-    print('引用链：%d 条被 html/css/manifest 点名，断链 %d 条；色板镜像 %d 键，漂移 %d 键'
-          % (len(refs), len(miss), len(PALETTE_MIRROR), len(drift)))
-    return 1 if (bad or miss or drift) else 0
+    print('引用链：%d 条被 html/css/manifest 点名，断链 %d 条；离线未 precache %d 条；色板镜像 %d 键，漂移 %d 键'
+          % (len(refs), len(miss), len(miss_off), len(PALETTE_MIRROR), len(drift)))
+    return 1 if (bad or miss or drift or miss_off) else 0
 
 
 def main():
