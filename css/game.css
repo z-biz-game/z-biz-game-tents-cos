@@ -18,10 +18,16 @@ html, body {
 
 body { touch-action: manipulation; }
 
+/* Notch / home-indicator room: env() resolves to 0px on a device without insets, so the
+   ordinary desktop layout keeps the exact token spacing it had before. */
 #app {
   max-width: 1180px;
   margin: 0 auto;
-  padding: var(--space-page) var(--space-page) var(--space-inner);
+  padding:
+    calc(var(--space-page) + env(safe-area-inset-top))
+    calc(var(--space-page) + env(safe-area-inset-right))
+    calc(var(--space-inner) + env(safe-area-inset-bottom))
+    calc(var(--space-page) + env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   gap: var(--space-card);
@@ -53,7 +59,7 @@ body { touch-action: manipulation; }
   text-transform: uppercase;
 }
 
-.top-actions { display: flex; gap: var(--space-gutter); }
+.top-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-gutter); }
 
 button {
   font: inherit;
@@ -62,6 +68,9 @@ button {
   border-radius: var(--radius-button);
   border: 1px solid var(--line);
   background: var(--surface);
+  /* 44px is the touch floor a thumb can actually hit; the link is the one exception and
+     it re-declares its own size below. */
+  min-height: 44px;
   padding: 10px 16px;
   transition: background var(--dur-tap) var(--ease-ease), border-color var(--dur-tap) var(--ease-ease), transform var(--dur-tap) var(--ease-spring);
 }
@@ -268,7 +277,8 @@ main { flex: 1; }
 
 .conflict-line.good { color: var(--accent); }
 
-#win-veil {
+#win-veil,
+#pause-veil {
   position: absolute;
   inset: 0;
   display: grid;
@@ -278,7 +288,10 @@ main { flex: 1; }
   animation: rise var(--dur-base) var(--ease-ease) both;
 }
 
-.win-card {
+#pause-veil { background: rgba(8, 11, 22, 0.86); }
+
+.win-card,
+.pause-card {
   text-align: center;
   padding: var(--space-card);
   border: 1px solid var(--accent);
@@ -287,10 +300,18 @@ main { flex: 1; }
   max-width: 86%;
 }
 
+.pause-card { border-color: var(--line-heavy); }
+
 .win-card h3 { margin: 0 0 6px; font-size: 19px; }
 .win-card p { margin: 0 0 8px; font-size: 13px; color: var(--ink-dim); }
+.pause-card h3 { margin: 0 0 6px; font-size: 17px; }
+.pause-card p { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-dim); line-height: 1.6; }
+.pause-card b { color: var(--accent); }
+
+/* The victory sprite is the game's own art, sized down here rather than resampled on disk. */
+.win-art { display: block; margin: 0 auto 8px; image-rendering: auto; }
 .win-record { color: var(--success) !important; font-weight: 700; }
-.win-actions { display: flex; gap: var(--space-gutter); justify-content: center; }
+.win-actions { display: flex; flex-wrap: wrap; gap: var(--space-gutter); justify-content: center; }
 
 .panel {
   display: flex;
@@ -376,8 +397,105 @@ main { flex: 1; }
 
 .foot code { font-family: var(--font-mono); color: var(--ink-dim); }
 
+/* ---------- overlays that are not tied to the board ---------- */
+
+.chip.paused {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+#howto-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--space-card) + env(safe-area-inset-top)) var(--space-page)
+    calc(var(--space-card) + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  background: rgba(8, 11, 22, 0.82);
+}
+
+.howto-card {
+  width: min(560px, 100%);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-inner);
+  border: 1px solid var(--line-heavy);
+  border-radius: var(--radius-card);
+  background: var(--surface-lift);
+  padding: var(--space-card);
+}
+
+.howto-card h3 { margin: 0; font-size: 18px; }
+.howto-card h4 {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 600;
+}
+
+.howto-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-inner); }
+
+.howto-step {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  background: var(--surface);
+  padding: 11px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.howto-step img { align-self: flex-start; border-radius: var(--radius-chip); }
+.howto-step b { color: var(--ink); font-size: 12.5px; }
+
+.howto-note { margin: 0; font-size: 12.5px; line-height: 1.7; color: var(--ink-dim); }
+.howto-note b { color: var(--accent); }
+
+.keys {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
+
+.keys b { color: var(--ink); font-family: var(--font-mono); }
+
+/* Same paper the canvas board lays down, so the DOM chrome and the board are one surface. */
+#view-game .stage,
+#view-game .panel {
+  background-image: url('../assets/textures/night-paper-256.png');
+  background-repeat: repeat;
+}
+
+/* The OS preference has to reach the stylesheet itself, not only the class main.js toggles —
+   a player who never opens the panel still asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .view,
+  #win-veil,
+  #pause-veil,
+  button {
+    animation: none;
+    transition: none;
+  }
+
+  button:active { transform: none; }
+}
+
 @media (max-width: 900px) {
   #view-game { grid-template-columns: 1fr; }
   .menu-cols { grid-template-columns: 1fr; }
   .foot { flex-direction: column; align-items: flex-start; }
+  .howto-cols { grid-template-columns: 1fr; }
 }

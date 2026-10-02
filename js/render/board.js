@@ -8,11 +8,18 @@
 // answer with the *same* numbers draw() used. Those two drifting apart is how a board renders
 // correctly but takes clicks one cell off.
 
-import { Palette, Cell, Radius, Font } from '../theme.js';
+import { Palette, Cell, Radius, Font, prefersReducedMotion } from '../theme.js';
 // The renderer compares the engine's cell constants to decide what to paint — `NO_CLUE` alone
 // leaves `OPEN`/`TENT`/`GRASS` unbound, and the first draw() then dies with a ReferenceError
 // before a single cell reaches the canvas.
 import { NO_CLUE, OPEN, TENT, GRASS } from '../engine/tents.js';
+
+// 每个涟漪/提示圈的可见部分：t 是 0..1 的进度，返回（不透明度, 半径系数）。
+// 全部只依赖 t = age/life，而 age 由帧 dt 积分而来 ⇒ 30Hz 与 120Hz 看到的是同一条曲线。
+function envelope(t) {
+  const e = 1 - Math.pow(1 - t, 3);           // easeOutCubic：起步快、收尾稳
+  return { alpha: Math.pow(1 - t, 1.6), grow: e };
+}
 
 export function layoutFor(w, h, availW, availH) {
   // One-sided gutters: the row numbers sit to the left of the grid and the column numbers above
@@ -77,7 +84,7 @@ export class BoardView {
     return gy * game.w + gx;
   }
 
-  draw(game, { pulse = null, preview = null } = {}) {
+  draw(game, { pulses = null, preview = null, reduce = prefersReducedMotion() } = {}) {
     this.game = game;
     const { ctx, geo } = this;
     const { cell } = geo;
@@ -152,25 +159,43 @@ export class BoardView {
     for (let r = 0; r < b.h; r++) drawClue(ctx, this.rowPoint(r), b.want[b.rowId(r)], rad, diag, b.rowId(r));
     for (let c = 0; c < b.w; c++) drawClue(ctx, this.colPoint(c), b.want[b.colId(c)], rad, diag, b.colId(c));
 
-    // What a hint just named — the only place the UI is allowed to say "look here". The ring goes
-    // on the cell and on whatever gave the rule its right to speak: the line, or the trunk.
-    if (pulse && pulse.cell != null) {
-      const r = this.cellRect(pulse.cell);
-      ctx.strokeStyle = pulse.color || Palette.hint;
+    // What a hint or a win just named — the only place the UI is allowed to say "look here".
+    // 每个圈按自己的 age 淡出：省动效时不画涟漪扩张、也不画淡出过程，圈以固定不透明度亮着，
+    // 由 main.js 在到期时摘掉（标题态与玩法态都退回静图）。
+    for (const p of pulses || []) {
+      if (p.cell == null) continue;
+      const t0 = Math.max(0, Math.min(1, (p.age - (p.delay || 0)) / p.life));
+      if (p.age < (p.delay || 0)) continue;
+      const env = reduce ? { alpha: 1, grow: 0.35 } : envelope(t0);
+      if (env.alpha <= 0.02) continue;
+      const r = this.cellRect(p.cell);
+      ctx.save();
+      ctx.globalAlpha = env.alpha;
+      ctx.strokeStyle = p.color || Palette.hint;
       ctx.lineWidth = Math.max(2, cell * 0.09);
-      roundRect(ctx, r.x + 2, r.y + 2, cell - 4, cell - 4, Radius.cell);
+      const inset = 2 + (reduce ? 0 : env.grow * cell * 0.06);
+      roundRect(ctx, r.x + inset, r.y + inset, cell - 2 * inset, cell - 2 * inset, Radius.cell);
       ctx.stroke();
-      if (pulse.line != null) {
-        const p = pulse.line < b.h ? this.rowPoint(pulse.line) : this.colPoint(pulse.line - b.h);
-        ring(ctx, p, rad + Math.max(2, cell * 0.06), cell, Palette.hint);
+      // 涟漪：从格子中心向外扩到邻格的一半，只画在板内，绝不越到别的格子的取样点上
+      if (!reduce && p.kind === 'hint') {
+        ctx.lineWidth = Math.max(1.5, cell * 0.05);
+        ctx.globalAlpha = env.alpha * 0.55;
+        ring(ctx, centreOf(r, cell), cell * (0.24 + env.grow * 0.5), cell, p.color || Palette.hint);
       }
-      for (const t of [pulse.tree, pulse.tent]) {
+      if (p.line != null) {
+        const q = p.line < b.h ? this.rowPoint(p.line) : this.colPoint(p.line - b.h);
+        ctx.globalAlpha = env.alpha;
+        ring(ctx, q, rad + Math.max(2, cell * 0.06), cell, Palette.hint);
+      }
+      for (const t of [p.tree, p.tent]) {
         // A hint that is not about a trunk carries the engine's "no such object" sentinel, and
         // cellRect(-1) wraps to a point in the left gutter — which is a ring drawn through the
         // row numbers on every 无树不扎营 hint. Only a real cell may be ringed.
         if (t == null || t < 0) continue;
+        ctx.globalAlpha = env.alpha;
         ring(ctx, centreOf(this.cellRect(t), cell), cell * 0.42, cell, Palette.hint);
       }
+      ctx.restore();
     }
   }
 }

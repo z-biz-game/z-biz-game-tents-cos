@@ -5,6 +5,8 @@
 let ctx = null;
 let master = null;
 let enabled = true;
+// 观测数：harness 靠这两个数分辨"真静音"和"把 gain 设成 0 的假静音"。
+const stats = { oscillators: 0, suspended: 0, resumed: 0 };
 
 function audio() {
   if (typeof AudioContext === 'undefined' && typeof webkitAudioContext === 'undefined') return null;
@@ -19,7 +21,10 @@ function audio() {
       return null;
     }
   }
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  if (ctx.state === 'suspended') {
+    stats.resumed++;
+    ctx.resume().catch(() => {});
+  }
   return ctx;
 }
 
@@ -27,11 +32,15 @@ function audio() {
 // a call to this; adding a second voice shape is how a game ends up with sounds that do not
 // belong to the same instrument.
 function tone({ f0, f1 = f0, dur = 0.12, type = 'sine', gain = 0.22, delay = 0 }) {
+  // 静音态必须在碰 AudioContext 之前就返回：走下去会 resume() 一个本该睡着的上下文，
+  // 还会新建振荡器节点 —— 那正是"只是把 gain 设 0"的假静音。
+  if (!enabled) return;
   const ac = audio();
-  if (!ac || !enabled) return;
+  if (!ac) return;
   const t = ac.currentTime + delay;
   const osc = ac.createOscillator();
   const vol = ac.createGain();
+  stats.oscillators++;
   osc.type = type;
   osc.frequency.setValueAtTime(f0, t);
   osc.frequency.exponentialRampToValueAtTime(Math.max(40, f1), t + dur);
@@ -43,11 +52,32 @@ function tone({ f0, f1 = f0, dur = 0.12, type = 'sine', gain = 0.22, delay = 0 }
   osc.stop(t + dur + 0.02);
 }
 
+// The context is parked, not merely silent: suspend() stops its own clock, so a muted tab does
+// no audio work at all, and resume() is the only way back.
+function park(on) {
+  if (!ctx) return;
+  try {
+    if (!on && ctx.state === 'running') {
+      stats.suspended++;
+      ctx.suspend().catch(() => {});
+    } else if (on && ctx.state === 'suspended') {
+      stats.resumed++;
+      ctx.resume().catch(() => {});
+    }
+  } catch {
+    /* 状态读不到只是少了观测；静音本身由 `enabled` 保证 */
+  }
+}
+
 export const Sound = {
   setEnabled(v) {
     enabled = !!v;
+    park(enabled);
   },
   enabled: () => enabled,
+  // Read by the verification harness: `state` is the AudioContext's own, so a fake mute (gain 0
+  // with the context still running) cannot hide behind it.
+  inspect: () => ({ enabled, state: ctx ? ctx.state : 'none', ...stats }),
 
   place() {
     tone({ f0: 520, f1: 880, dur: 0.14, type: 'triangle', gain: 0.2 });

@@ -36,6 +36,9 @@
     <div class="top-actions">
       <button id="btn-sound" class="ghost" type="button" aria-pressed="true">音效 开</button>
       <button id="btn-motion" class="ghost" type="button" aria-pressed="false">动效 全</button>
+      <button id="btn-howto" class="ghost" type="button" aria-pressed="false" aria-label="玩法说明（? 键）">玩法</button>
+      <button id="btn-pause" class="ghost" type="button" aria-pressed="false" aria-label="暂停这一局（P 键）">暂停</button>
+      <button id="btn-full" class="ghost" type="button" aria-pressed="false" aria-label="全屏（F 键）">全屏</button>
     </div>
   </header>
 
@@ -91,12 +94,22 @@
           <canvas id="board" data-mode="tent" role="img" aria-label="帐篷棋盘：点击格子放帐篷或草地"></canvas>
           <div id="win-veil" hidden>
             <div class="win-card">
+              <img class="win-art" src="assets/sprites/tent-128.png" alt="" width="56" height="56" />
               <h3>每棵树都有帐，每个数字都凑齐了</h3>
               <p id="win-meta"></p>
               <p id="win-record" class="win-record"></p>
               <div class="win-actions">
                 <button id="btn-again" class="primary" type="button">再来一局</button>
                 <button id="btn-menu-2" class="ghost" type="button">回选档</button>
+              </div>
+            </div>
+          </div>
+          <div id="pause-veil" hidden>
+            <div class="pause-card">
+              <h3>这一局停在这里</h3>
+              <p>计时和动画都按下了，盘上的墨一格没动。按 <b>P</b> 或 <b>继续</b> 回到同一格。</p>
+              <div class="win-actions">
+                <button id="btn-resume-run" class="primary" type="button">继续</button>
               </div>
             </div>
           </div>
@@ -112,6 +125,7 @@
         <div class="acts">
           <button id="btn-hint" class="primary" type="button">提示<span class="mono" id="hint-count">0</span></button>
           <button id="btn-undo" class="ghost" type="button">撤销</button>
+          <button id="btn-restart" class="ghost" type="button" aria-label="重开这一局（R 键）">重开</button>
           <button id="btn-new" class="ghost" type="button">换一局</button>
           <button id="btn-menu" class="ghost" type="button">回选档</button>
         </div>
@@ -138,7 +152,7 @@
           <span><i class="sw sw-empty"></i>待定格</span>
           <span><i class="sw sw-done"></i>数字凑齐的边</span>
         </div>
-        <p class="keyhint"><b>拖动</b> 连续放同一笔 · <b>从自己的记号上起笔</b> 就是擦 · <b>T</b> 帐篷 · <b>G</b> 草地 · <b>H</b> 提示 · <b>Z</b> 撤销 · <b>M</b> 换笔</p>
+        <p class="keyhint"><b>拖动</b> 连续放同一笔 · <b>从自己的记号上起笔</b> 就是擦 · <b>T</b> 帐篷 · <b>G</b> 草地 · <b>H</b> 提示 · <b>Z</b> 撤销 · <b>M</b> 换笔 · <b>R</b> 重开 · <b>P</b> 暂停 · <b>F</b> 全屏 · <b>?</b> 玩法</p>
       </aside>
     </section>
   </main>
@@ -147,6 +161,43 @@
     <span>每局唯一解 · 每局可用逻辑推到底 · 提示只给推得出的一步 — 由 <code>tools/verify.sh</code> 在真实浏览器里逐条断言。</span>
     <button id="btn-reset" class="link" type="button">清空存档</button>
   </footer>
+
+  <div id="howto-veil" hidden role="dialog" aria-modal="true" aria-label="玩法说明">
+    <div class="howto-card">
+      <h3>三句话讲完，剩下的是耐心</h3>
+      <div class="howto-cols">
+        <div class="howto-step">
+          <img src="assets/sprites/tree-128.png" alt="树" width="48" height="48" />
+          <b>树占住格子</b>
+          <span>帐篷只能扎在它的上、下、左、右四格之一，斜着不算。</span>
+        </div>
+        <div class="howto-step">
+          <img src="assets/sprites/rule-tent-spacing-128.png" alt="帐篷互不相邻" width="48" height="48" />
+          <b>一帐八周空</b>
+          <span>两顶帐篷连斜角都不能碰，所以每顶帐篷周围八格都是草地。</span>
+        </div>
+        <div class="howto-step">
+          <img src="assets/sprites/grass-128.png" alt="草地" width="48" height="48" />
+          <b>边上的数字是账</b>
+          <span>那一行、那一列要放够几顶；没写数字的边不作限制，但每棵树都得有帐。</span>
+        </div>
+      </div>
+      <p class="howto-note">
+        每局只有一个答案，也每一局都能靠逻辑推到底：卡住时按 <b>提示</b>，它只说当前推得出的那一格和它依据哪条规则。
+        笔误不要紧——<b>撤销</b> 一格一格退回去，从自己已放的记号上起笔就是擦。
+      </p>
+      <h4>键位</h4>
+      <ul class="keys">
+        <li><b>T</b> 帐篷 · <b>G</b> 草地 · <b>M</b> 换笔</li>
+        <li><b>H</b> 提示 · <b>Z</b> 撤销 · <b>R</b> 重开这一局</li>
+        <li><b>P</b> 暂停 / 继续 · <b>F</b> 全屏 · <b>Shift+M</b> 静音</li>
+        <li><b>?</b> 打开本说明 · <b>Esc</b> 关闭 · <b>Enter</b> 开局选中的档</li>
+      </ul>
+      <div class="win-actions">
+        <button id="btn-howto-close" class="primary" type="button">知道了</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script type="module" src="js/pwa.js"></script>
