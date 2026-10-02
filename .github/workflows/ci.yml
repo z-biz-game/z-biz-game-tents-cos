@@ -44,6 +44,12 @@ jobs:
       - name: Entry files exist
         run: test -f index.html && grep -q '<canvas' index.html && grep -q 'js/main.js' index.html
 
+      # 资产闸：图标/sprite/纹理得是盘上真 PNG（读 IHDR，不信文件名），theme.js 的色板要和画师
+      # 常量同源，html/css/manifest 点名的每条 assets/*.png 都不许断链。--check 只用标准库，
+      # 所以这一步不需要 pip install —— 和上面"不装 npm"是同一条理由。
+      - name: Art assets are real PNGs and still wired
+        run: python3 assets/gen/make_art.py --check
+
   # 真浏览器闸：headless Chrome + CDP，读 DOM 文本/几何与画布像素，不读内部标志位。
   # 独立 job，node 22 而不是 check job 的 20：台架是裸 CDP 驱动，用的是 Node 22 才有的全局
   # WebSocket/fetch；在 20 上第一次 attach 就死在 "WebSocket is not defined"，一条断言都跑不到。

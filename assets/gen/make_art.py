@@ -15,18 +15,28 @@ accent #FFC85C、pencil-strong #8FA6CC）。形状由 canvas 渲染器 js/render
   assets/icons/maskable-{192,512}.png                      主体缩进 80% 安全区
   assets/icons/favicon-32.png / apple-touch-icon.png       index.html 直接引用
   assets/textures/night-paper-256.png                      可平铺纸纹（画布板面 + CSS 底）
-  assets/sprites/{tent,tree,grass,flag}-128.png            玩法说明/胜利卡里的透明 sprite
+  assets/sprites/{tent,tree,grass,rule-tent-spacing}-128.png  玩法说明/胜利卡里的透明 sprite
   assets/img/og-cover.png                                  1200x630 社交卡
 
-只依赖 Pillow；不联网、不读仓外文件，同一份脚本在任何机器上画出同样的像素（seed 写死）。
+重画像素只依赖 Pillow；不联网、不读仓外文件，同一份脚本在任何机器上画出同样的像素（seed 写死）。
+--check 只用标准库（无 Pillow 也能跑），所以它能直接当 CI 的资产闸。
+
+--check 除了核对 IHDR，还核对两件事：色板常量与 js/theme.js 的 Palette 是否仍然同源，以及
+index.html / css/game.css / manifest.webmanifest 里引用的每个 assets/*.png 是否真在盘上。
 """
 import argparse
 import os
 import random
+import re
 import struct
 import sys
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+# --check 只用标准库（读 IHDR + 正则对色板与引用链），所以 Pillow 缺失时它照样能当 CI 的资产闸；
+# 只有真的重画像素才需要 Pillow，那份要求在 main() 里按需报出来。
+try:
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+except ImportError:
+    Image = ImageDraw = ImageFilter = ImageFont = None
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 SEED = 20261002  # 写死：像素必须可复现，图标不能每次构建都换一副面孔
@@ -344,8 +354,64 @@ def build_og(path):
     return {'latin_font': fp1, 'cjk_font': cjk_path or 'none(拉丁兜底)'}
 
 
+def read_ihdr(p):
+    """自己读 PNG 文件头的 IHDR，不信任何人的文件名。返回 (w, h) 或 (-1, -1)。"""
+    with open(p, 'rb') as fh:
+        head = fh.read(24)
+    if head[:8] != b'\x89PNG\r\n\x1a\n' or head[12:16] != b'IHDR':
+        return (-1, -1)
+    return struct.unpack('>II', head[16:24])
+
+
+# js/theme.js 里那一份是运行时的唯一真源；这里是画师用的那一份。键名对不上就是画和盘分家了。
+PALETTE_MIRROR = {
+    'bgTop': BG_TOP, 'bgBottom': BG_BOTTOM, 'surface': SURFACE, 'surfaceLift': SURFACE_LIFT,
+    'line': LINE, 'lineHeavy': LINE_HEAVY, 'ink': INK, 'accent': ACCENT,
+    'accentEdge': ACCENT_EDGE, 'info': INFO, 'pencilStrong': PENCIL, 'success': SUCCESS,
+}
+
+
+def palette_drift():
+    """把 js/theme.js 的 Palette hex 和上面的常量逐个对，返回不符的清单（缺键也算不符）。"""
+    src = os.path.join(ROOT, 'js', 'theme.js')
+    if not os.path.isfile(src):
+        return ['js/theme.js 读不到']
+    body = open(src, encoding='utf-8').read()
+    found = dict(re.findall(r"(\w+):\s*'(#[0-9A-Fa-f]{6})'", body))
+    out = []
+    for key, rgb in PALETTE_MIRROR.items():
+        raw = found.get(key)
+        if raw is None:
+            out.append('%s 在 theme.js 里不见了' % key)
+            continue
+        got = tuple(int(raw[1 + i:3 + i], 16) for i in (0, 2, 4))
+        if got != rgb:
+            out.append('%s theme.js=%s 画师=%s' % (key, raw, '#%02X%02X%02X' % rgb))
+    return out
+
+
+REF_SOURCES = ['index.html', os.path.join('css', 'game.css'), 'manifest.webmanifest']
+
+
+def broken_refs():
+    """html/css/manifest 里点名的每个 assets/*.png 都必须真在盘上且非 0 字节。"""
+    refs = set()
+    for rel in REF_SOURCES:
+        p = os.path.join(ROOT, rel)
+        if not os.path.isfile(p):
+            continue
+        refs.update(re.findall(r'assets/[A-Za-z0-9_\-./]+\.png', open(p, encoding='utf-8').read()))
+    out = []
+    for r in sorted(refs):
+        fp = os.path.join(ROOT, r)
+        if not os.path.isfile(fp):
+            out.append('%s 被引用但盘上没有' % r)
+        elif os.path.getsize(fp) == 0:
+            out.append('%s 是 0 字节' % r)
+    return sorted(refs), out
+
+
 def check(outdir):
-    """读 PNG 文件头的 IHDR，自己核对宽高 —— 不信任何人的文件名。"""
     rows, bad = [], []
     for base, _, files in os.walk(ROOT):
         if 'assets' not in base and not base.endswith('assets'):
@@ -355,26 +421,34 @@ def check(outdir):
                 continue
             p = os.path.join(base, f)
             size = os.path.getsize(p)
-            with open(p, 'rb') as fh:
-                head = fh.read(33)
-            ok = head[:8] == b'\x89PNG\r\n\x1a\n' and head[12:16] == b'IHDR'
-            w, h = struct.unpack('>II', head[16:24]) if ok else (-1, -1)
+            w, h = read_ihdr(p)
             rows.append((os.path.relpath(p, ROOT), w, h, size))
-            if not ok or size == 0:
+            if (w, h) == (-1, -1) or size == 0:
                 bad.append(p)
     for r in rows:
         print('%-46s %4dx%-4d %8d B' % r)
+    refs, miss = broken_refs()
+    drift = palette_drift()
+    for m in miss:
+        print('  引用断链：%s' % m)
+    for d in drift:
+        print('  色板漂移：%s' % d)
     print('PNG 文件 %d 张，坏 %d 张，边长≥180 的 %d 张' % (len(rows), len(bad),
           sum(1 for r in rows if min(r[1], r[2]) >= 180)))
-    return 1 if bad else 0
+    print('引用链：%d 条被 html/css/manifest 点名，断链 %d 条；色板镜像 %d 键，漂移 %d 键'
+          % (len(refs), len(miss), len(PALETTE_MIRROR), len(drift)))
+    return 1 if (bad or miss or drift) else 0
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--check', action='store_true', help='只核对盘上 PNG 的类型与宽高')
+    ap.add_argument('--check', action='store_true',
+                    help='核对盘上 PNG 的类型/宽高、theme.js 色板是否仍同源、html/css/manifest 引用链是否断链')
     args = ap.parse_args()
     if args.check:
         return check(None)
+    if Image is None:
+        raise SystemExit('重画像素需要 Pillow（pip install pillow）；只核对资产请用 --check，那条走标准库。')
     icons = os.path.join(ROOT, 'assets', 'icons')
     texdir = os.path.join(ROOT, 'assets', 'textures')
     sprdir = os.path.join(ROOT, 'assets', 'sprites')
@@ -386,9 +460,11 @@ def main():
     sprites = build_sprites(sprdir)
     info = build_og(os.path.join(imgdir, 'og-cover.png'))
     total = len(made) + len(sprites) + 2
-    big = sum(1 for s in list(made.values()) + list(sprites.values()) if s >= 180) + 1  # og 630
-    print('生成 %d 张 PNG（其中边长/高≥180 的 %d 张）：icons=%d sprites=%d texture=1 og=1'
-          % (total, big, len(made), len(sprites)))
+    pngs = [os.path.join(b, f) for b, _, fs in os.walk(os.path.join(ROOT, 'assets'))
+            for f in fs if f.endswith('.png')]
+    big = sum(1 for p in pngs if min(read_ihdr(p)) >= 180)
+    print('生成 %d 张 PNG（盘上实测 %d 张，其中边长≥180 的 %d 张）：icons=%d sprites=%d texture=1 og=1'
+          % (total, len(pngs), big, len(made), len(sprites)))
     print('og 字体：拉丁=%s 中文=%s' % (info['latin_font'], info['cjk_font']))
     return 0
 
