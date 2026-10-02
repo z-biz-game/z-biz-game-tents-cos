@@ -108,7 +108,7 @@ function sanitize(parsed) {
     && isInt(r.moves, 0, 1e6) && isInt(r.hints, 0, 1e6)
     && Array.isArray(r.ink) && r.ink.length <= r.cells * 2 + 2
     && r.ink.every((v, i) => (i % 2 ? isInt(v, 1, 255) : isInt(v, 0, 2)))) {
-    data.resume = { seed: r.seed, tier: r.tier, cells: r.cells, ink: r.ink, elapsedMs: r.elapsedMs, moves: r.moves, hints: r.hints };
+    data.resume = { seed: r.seed, tier: r.tier, cells: r.cells, ink: r.ink, elapsedMs: r.elapsedMs, moves: r.moves, hints: r.hints, at: isNum(r.at, 0, Number.MAX_SAFE_INTEGER) ? r.at : 0 };
   } else if (r !== undefined && r !== null) {
     dropped.push('resume');
   }

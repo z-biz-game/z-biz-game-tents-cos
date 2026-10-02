@@ -746,6 +746,8 @@ window.tents = {
     frames: fx.frames,
     pulses: fx.pulses.length,
     ages: fx.pulses.map((p) => Math.round(p.age * 1e6) / 1e6),
+    // 画师拿到的三个量：探针据此重建 alpha（(age-delay)/life 的同一条曲线），比裸 age 更贴近"玩家看见什么"。
+    pulsesDetail: fx.pulses.map((p) => ({ age: p.age, life: p.life, delay: p.delay || 0, kind: p.kind })),
     paused,
     reduce: prefersReducedMotion(),
     elapsedMs: clock(),
