@@ -71,6 +71,15 @@ function addPulse(p) {
   draw();
 }
 
+// 重开/换一局要把动画时钟一起放下：fx.clock 与 fx.frames 都是"这一局跑了多久"的观测量，
+// 只摘涟漪而留着时钟，下一局的年龄就从上一局的末值起步（帧率对拍读的正是它）。
+// fx.lastTime 故意保留：归零会让恢复后的第一帧拿到跨局的巨大 dt。
+function resetFx() {
+  fx.clock = 0;
+  fx.frames = 0;
+  fx.pulses = [];
+}
+
 function fxTick(now) {
   fx.raf = requestAnimationFrame(fxTick);
   const last = fx.lastTime || now;
@@ -223,7 +232,7 @@ function restart() {
   paused = false;
   clearPausedUi();
   el.winVeil.hidden = true;
-  fx.pulses = [];
+  resetFx();
   stroke = null;
   baseElapsed = 0;
   startedAt = 0;
@@ -385,7 +394,7 @@ function begin({ tier = 'trainee', seed = null, resume = null } = {}) {
   game = new Game(puzzle);
   paused = false;
   clearPausedUi();
-  fx.pulses = [];
+  resetFx();
   stroke = null;
   el.winVeil.hidden = true;
   baseElapsed = 0;
