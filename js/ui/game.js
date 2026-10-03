@@ -15,6 +15,7 @@ import {
   setCell,
   snapshot,
   undo as undoState,
+  resetInk,
   solve,
   verify,
   complete,
@@ -47,6 +48,28 @@ export class Game {
     this.mode = TENT;
     this.lastHint = null;
     this.recompute();
+  }
+
+  // 重开**同一道题**：把这一局整个归零，题面不动。
+  //
+  // 陷阱就在这里：引擎的 resetInk() 只清了 st.cell 与 st.history，而撤销栈 this.steps、
+  // 步数 this.moves、提示次数 this.hints、提示游标 this.cursor、胜负 this.status、
+  // 临时态 this.mode、上一条提示文案 this.lastHint 全挂在 UI 这一层的 Game 实例上，
+  // 它一个都碰不到。只调 resetInk() 当重开，这半局的痕迹会原封不动当成新局开场白，
+  // 玩家还按得动撤销回到走错那一步（实测 steps 6 → 6、cursor 40 → 40）。
+  // 提示游标要点：它决定下一条提示从推导脚本的哪一行继续，不归零的话重开后的第一条
+  // 提示会被跳过，玩家会觉得提示坏了。
+  resetAll() {
+    resetInk(this.st);       // st.cell 全回空 + 引擎 history 清空
+    this.steps = [];         // UI 撤销栈：resetInk 管不到，清的是引擎那份
+    this.moves = 0;          // 步数归零
+    this.hints = 0;          // 提示次数归零：提示要收钱，留着等于让玩家白嫖上一局的帮助
+    this.cursor = 0;         // 提示脚本从头再来
+    this.status = 'playing'; // 胜负回判：上一局赢了也不能把重开后的盘算成已通关
+    this.mode = TENT;        // 临时态：落笔模式回到默认
+    this.lastHint = null;    // 上一条提示文案属于上一局
+    this.recompute();        // violated / stuck / diag 一并重算，否则面板上留着上一局的判词
+    return this;
   }
 
   recompute() {
