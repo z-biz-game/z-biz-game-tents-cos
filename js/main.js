@@ -113,6 +113,7 @@ function flushResume() {
 }
 
 function startClock() {
+  paused = false;   // 新一局从"没暂停"开始；setPaused(false) 走的就是这条路
   startedAt = Date.now();
   clearInterval(ticker);
   ticker = setInterval(() => {
@@ -575,3 +576,38 @@ window.tents = {
   window.addEventListener('MSFullscreenChange', sync);
   sync();
 })();
+
+// ---- 暂停：真的把仿真冻住 ----
+//
+// 本仓唯一持续推进的仿真是耗时时钟（startedAt 跟 Date.now 走，ticker 是它唯一心跳）。
+// setPaused(true) 调 stopClock()：baseElapsed 落账、startedAt 归 0、ticker 停，
+// 此后 clock() 恒等于 baseElapsed，墙钟再走多久都加不上去。
+// setPaused(false) 调 startClock()：startedAt 复位成"从现在起"，
+// 所以恢复后的第一帧不会把暂停期间憋下的墙钟一次性灌进来（没有 dt 尖峰）。
+//
+// 用 var 而不是 let：本块在文件末尾，而 startClock() 可能在它之前就被 begin() 调过；
+// let 声明提升不到初始化，TDZ 会直接抛 ReferenceError。
+var paused = false;
+function setPaused(v) {
+  v = !!v;
+  if (v === paused) return paused;
+  if (v) stopClock(); else startClock();
+  paused = v;
+  var b = document.getElementById('btn-pause');
+  if (b) {
+    b.setAttribute('aria-pressed', String(paused));
+    b.textContent = paused ? '继续' : '暂停';
+    b.title = paused ? '继续 (P)' : '暂停 (P)';
+  }
+  return paused;
+}
+function togglePause() { return setPaused(!paused); }
+function isPaused() { return paused; }
+
+document.getElementById('btn-pause').addEventListener('click', togglePause);
+window.addEventListener('keydown', function (ev) {
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (ev.target && /input|textarea|select/i.test(ev.target.tagName)) return;
+  var k = ev.key;
+  if (k === 'p' || k === 'P' || k === ' ') { ev.preventDefault(); togglePause(); }
+});
