@@ -169,7 +169,7 @@ js/engine/generate.js 种帐篷 → 配树与闲树 → 按"铅笔仍推得完"�
 js/ui/game.js       状态机：手势、撤销、提示、判胜
 js/render/board.js  几何 + 绘制 + 命中（布局与绘制共用同一套数）
 js/store.js         localStorage 单键存档 `tents.save.v1`：种子 + 记号游程编码 + 这一局的花费
-tools/              engine-test / balance / playtest(CDP) / scenarios / verify.sh / tools/assemble-site / tools/deploy-set / tools/deploy-set-selftest
+tools/              engine-test / balance / playtest(CDP) / scenarios / verify.sh / assemble-site.sh / deploy-set.mjs / deploy-set-selftest.mjs
 tools/assemble-site.sh  部署产物的唯一清单（pages.yml 与本地闸调同一支）
 tools/deploy-set.mjs  部署集闸：检查即将上传的那份产物
 tools/deploy-set-selftest.mjs  部署集闸的阴性自证（每一类断言当场打红一次）
