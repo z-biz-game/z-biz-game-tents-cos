@@ -36,7 +36,7 @@
 - 难度不是标签：`初学 → 大师` 五档的分数带是**实测**出来的（`npm run balance` 打印分位表），
   档位排的是「盘面多大 × 帐篷多密 × 多下了几棵闲树 × 留下多少数字」，`band` 是**选取目标**，
   `balance` 盯着不许漂移（见 DESIGN §8）。
-- 规模：9 个 ES Module / 2,186 行 JS + 5 个验证脚本 / 2,361 行 + 521 行 CSS/HTML，**运行时依赖 0 个**。
+- 规模：9 个 ES Module / 2,186 行 JS + 8 个验证脚本 / 3,055 行 + 521 行 CSS/HTML，**运行时依赖 0 个**。
 - 验证：**148 项 Node 断言全绿**（`node tools/engine-test.mjs` → `148 通过 / 0 失败`）+ **9 个浏览器场景
   / 516 项断言**（engine 44 / gen 110 / play 80 / hint 30 / stroke 39 / conflict 48 / save 60 /
   resume 40 / layout 65——场景名写进 `tools/verify.sh` 的默认清单，纪律是读 DOM 几何与画布像素、
@@ -169,9 +169,58 @@ js/engine/generate.js 种帐篷 → 配树与闲树 → 按"铅笔仍推得完"�
 js/ui/game.js       状态机：手势、撤销、提示、判胜
 js/render/board.js  几何 + 绘制 + 命中（布局与绘制共用同一套数）
 js/store.js         localStorage 单键存档 `tents.save.v1`：种子 + 记号游程编码 + 这一局的花费
-tools/              engine-test / balance / playtest(CDP) / scenarios / verify.sh
+tools/              engine-test / balance / playtest(CDP) / scenarios / verify.sh / assemble-site.sh / deploy-set.mjs / deploy-set-selftest.mjs
+tools/assemble-site.sh  部署产物的唯一清单（pages.yml 与本地闸调同一支）
+tools/deploy-set.mjs  部署集闸：检查即将上传的那份产物
+tools/deploy-set-selftest.mjs  部署集闸的阴性自证（每一类断言当场打红一次）
 ```
 
 ## 许可
 
 MIT。见 `LICENSE`。
+
+## 上线的到底是哪一批文件
+
+这个仓没有打包器：站点=一次文件拷贝。以前「拷哪些」写在 `pages.yml` 的 `run:` 里（手抄的几行
+`cp`）。本地 `index.html` 直读仓库根，永远自洽；线上却按那份清单拷，于是页面后来引用的
+`manifest.webmanifest`、`sw.js`、`icons/*` 可能一个都没上去——线上 404，而仓里的引擎测试与
+真浏览器闸全绿，因为它们跑的都是仓库根，没有任何一步在「按清单拷」的那个环境下加载过页面。
+
+现在清单只有一份，住在 `tools/assemble-site.sh`：CI 调它拷 `_site`，本地闸调它拷临时目录，
+然后**对拷出来的产物**提要求（`tools/deploy-set.mjs`）：
+
+- **W 清单与页面同源**：`pages.yml` 里必须真有 `run: bash tools/assemble-site.sh <dir>` 这一行，
+  `ci.yml` 里必须真有 `run: node tools/deploy-set.mjs`。认的是调用那一行，不是文件里出现过这个
+  路径——注释里本来就会写它，只 grep 字符串会被一句散文喂绿。
+- **R 引用可达**：引用不靠手打名单。从 `index.html` 的 `href/src` 出发，凡解析出来是 `.js`/`.css`
+  的就把那一站也扫一遍（CSS 的 `url()`、JS 去掉注释后的 `'./…'` 字面量、`new URL(x, base)` 的两种
+  基、`navigator.serviceWorker.register`、`scope`），`manifest` 的 icons/screenshots/shortcuts 各自
+  的 `src` 也算引用。取径上读不到的那一站本身就是红（读不到＝这一站根本没扫）。每条引用都必须在
+  产物里且非 0 字节；绝对路径单列一条红，因为 Pages 挂在 `/<repo>/` 前缀下会跳出去。
+- **P 位图不许说谎**：`manifest` 声明的 `sizes` 必须等于 PNG IHDR 的真实宽高——文件图标读文件头，
+  内联成 base64 的图标先解码再读同一段。后一条不是可选项：图标可能住在清单里而不是盘上的 `.png`
+  （有的仓另有一条"零二进制文件"的承诺，那条只约束"有没有 .png 这个文件"）；如果 P 段只筛文件名，
+  声明写 512 而真图 192 就一路放行。
+- **钉住两个数**：R 段实际检查的路径条数（`25`）与这一次跑的断言条数（`43`），两个数
+  都钉在 `tools/deploy-set.mjs` 顶部的那对常量里。没改页面却掉了，说明解析断了；删掉一张图标会同时
+  少一条 R10 与那张的 P1/P2，所以两个数一起钉，断言条数能漂就是闸在缩水的信号。这一节故意只写数值、
+  不写那对常量的名字，也不写别仓文档闸的编号：有的仓的文档闸会拿"文档里出现过的同名标识号"回数它
+  自己的条数，还有的会把文档里点到的每个组编号逐个核对"这一轮真的发过"——两道闸共用一个名字，
+  或者在本仓的文档里出现一个本仓没有的组编号，打红的都是不相干的那一边。
+
+`tools/deploy-set-selftest.mjs` 是这两颗钉的阳性证明：它把仓库复制到临时目录，照着每一类断言
+各下一刀（X1 清单不收位图目录 / X2 模块边改名 / X3 CSS 写绝对路径 / X4 `start_url` 绝对 /
+X5 删光 >=512 图标 / X6 少一个必填字段 / X7 声明尺寸与真图不符 / X8 workflow 不调脚本 /
+X9 CI 不跑闸 / X10 是阴性对照——往入口 JS 追加一行只写在注释里的假路径，闸必须仍然绿、条数仍然
+`25`、断言仍然 `43`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
+X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上那句 og:image，X13 要清单里真有一段 base64
+图标，没有就打印 SKIP；反过来 X1 没有位图目录可砍时改砍 css，P 段一位都不核时台架直接报靶子不够），
+要求每一刀都让闸**点名**变红。靶子从 `DEPLOY_SET_DUMP=1`
+的出处表现挑（取径真的会读的那支 JS / 那一张 CSS，不写死某一个仓的入口名），所以页面改了、仓与仓
+不同，台架跟着走。
+
+`node tools/deploy-set.mjs` 与 `node tools/deploy-set-selftest.mjs` 就是 CI 跑的那两条命令本身
+（package.json 里的 `deploy-set` / `deploy-set:selftest` 只是同一支脚本的 npm 入口）；本仓的整闸在 `tools/verify.sh` 的 `=== deploy-set ===` 那一段也各跑一次。它们红的时候并进本仓那条出口的退出码——这一条是这么证的：
+把 ci.yml 里那行 `run: node tools/deploy-set.mjs` 砍掉，本仓整闸必须点名红且退出码非 0。
+所以「本地全绿、线上 404 自己的 manifest / sw.js / 图标」这一类坏法在本地就会红。
+

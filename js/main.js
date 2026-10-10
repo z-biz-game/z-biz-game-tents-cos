@@ -160,6 +160,7 @@ function flushResume() {
 }
 
 function startClock() {
+  paused = false;   // 新一局从"没暂停"开始；setPaused(false) 走的就是这条路
   startedAt = Date.now();
   clearInterval(ticker);
   ticker = setInterval(() => {
@@ -416,6 +417,39 @@ function begin({ tier = 'trainee', seed = null, resume = null } = {}) {
   return game;
 }
 
+// 重开：**同一道题**从头再来 —— 落笔、撤销栈、步数、提示次数、提示游标、计时、结算遮罩
+// 全部归零，但不换题。跟「换一局」的分工：换一局是重抽一道新题（那是"再来一局"），
+// 这里是"这题我走错了，原地重来"——玩家要的是同一个题。
+//
+// 为什么不能只调一次 resetInk() 就完事：那一步只碰得到引擎的 st.cell 与 st.history，
+// UI 层的撤销栈、步数、提示次数、提示游标都是各自独立存着的缓存（详见 Game.resetAll）。
+function restart() {
+  if (!game) return null;
+  game.resetAll();               // 盘面 + steps + moves + hints + cursor + status + mode + lastHint
+  pulse = null;                  // 上一条提示留下的高亮，属于上一局
+  stroke = null;                 // 上一次没画完的拖拽手势
+  el.winVeil.hidden = true;      // 结算遮罩收起：上一局赢了的遮罩不能压在重开后的盘上
+  baseElapsed = 0;               // 耗时归零
+  // 暂停中重开就保持停表，否则 startClock() 会把暂停期间憋下的墙钟一次性灌进计时。
+  if (paused) {
+    startedAt = 0;
+    clearInterval(ticker);
+    ticker = 0;
+  } else {
+    startClock();                // 没暂停就重新起跑，重开后的计时是这一局自己的
+  }
+  setMode(TENT);                 // 临时态：落笔模式回默认，HUD 的 aria-pressed 一起回写
+  el.hintRule.textContent = '提示理由';
+  el.hintLine.textContent = '按 提示 会说出当前能推的一格，以及它依据哪条规则。';
+  show('game');
+  syncAll();
+  // 存档覆盖成本局的空盘：刷新页面不会又冒出走错那半局的线。
+  // 特意**不**碰 Store 的偏好（静音 / 减动效 / 最好成绩）——那是玩家的东西，不是这一局的东西。
+  flushResume();
+  renderResumeCard();
+  return game;
+}
+
 function show(which) {
   el.viewMenu.hidden = which !== 'menu';
   el.viewGame.hidden = which !== 'game';
@@ -606,6 +640,7 @@ $('#btn-mode-tent').addEventListener('click', () => setMode(TENT));
 $('#btn-mode-grass').addEventListener('click', () => setMode(GRASS));
 $('#btn-hint').addEventListener('click', useHint);
 $('#btn-undo').addEventListener('click', undo);
+$('#btn-restart').addEventListener('click', restart);
 $('#btn-new').addEventListener('click', () => begin({ tier: game ? game.puzzle.tier : 'trainee' }));
 $('#btn-restart').addEventListener('click', restart);
 $('#btn-pause').addEventListener('click', () => setPaused(!paused));
@@ -654,47 +689,15 @@ function startFromMenu() {
 
 window.addEventListener('keydown', (ev) => {
   if (ev.target && /input|textarea/i.test(ev.target.tagName)) return;
-  const k = ev.key;
-  const lower = String(k).toLowerCase();
-  if (k === '?' || (ev.shiftKey && lower === '?')) {
-    ev.preventDefault();
-    setHowto();
-    return;
-  }
-  if (k === 'Escape') {
-    if (!el.howtoVeil.hidden) setHowto(false);
-    else if (paused) setPaused(false);
-    return;
-  }
-  if (ev.shiftKey && lower === 'm') {
-    toggleMute();
-    return;
-  }
-  if (k === 'Enter' || k === ' ' || lower === 'spacebar') {
-    // 焦点在某个按钮上时让原生激活处理它（选档列表 Tab 到位之后 Enter 就能开局）
-    const ae = document.activeElement;
-    if (ae && typeof ae.click === 'function' && ae !== document.body) return;
-    if (startFromMenu()) ev.preventDefault();
-    return;
-  }
-  if (lower === 'p') {
-    setPaused(!paused);
-    return;
-  }
-  if (lower === 'r') {
-    restart();
-    return;
-  }
-  if (lower === 'f') {
-    toggleFullscreen();
-    syncFullButton();
-    return;
-  }
-  if (lower === 'h') useHint();
-  else if (lower === 'z') undo();
-  else if (lower === 't') setMode(TENT);
-  else if (lower === 'g') setMode(GRASS);
-  else if (lower === 'm' && game) setMode(game.mode === TENT ? GRASS : TENT);
+  const k = ev.key.toLowerCase();
+  if (k === 'h') useHint();
+  else if (k === 'z') undo();
+  else if (k === 't') setMode(TENT);
+  else if (k === 'g') setMode(GRASS);
+  else if (k === 'm' && game) setMode(game.mode === TENT ? GRASS : TENT);
+  // R 重开同一题，**局中就能按**（不只结算后）：玩家涂到一半发现支错了，当场 R 一下重来。
+  // 本仓原先没有任何键占着 R（h/z 是玩法，t/g/m 切模式，P 暂停），所以不需要换键。
+  else if (k === 'r' && game) restart();
 });
 
 window.addEventListener('resize', draw);
@@ -737,6 +740,7 @@ window.tents = {
   },
   show,
   begin,
+  restart,
   useHint,
   undo,
   setMode,
@@ -807,3 +811,109 @@ window.tents = {
     GRASS,
   },
 };
+
+// ---- 全屏开关（#btn-fullscreen）----
+// 绑的是本页 HUD 上真实存在的那个按钮。全屏最常见的假实现就是引用一个并不存在的
+// id：点下去什么也不会发生，量具却算它"已实现"。所以这里找不到按钮就直接不装。
+(function bindFullscreen() {
+  const btn = document.getElementById('btn-fullscreen');
+  if (!btn) return;
+  const root = document.documentElement;
+  // 只做特性检测，不嗅探 UA：iOS Safari 是 webkitRequestFullscreen，老 Edge 是 ms 前缀，
+  // 而 UA 字符串随时会改。"有没有这个能力"是查出来的，不是猜出来的。
+  const req = root.requestFullscreen || root.webkitRequestFullscreen || root.msRequestFullscreen;
+  const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+  const current = () => document.fullscreenElement || document.webkitFullscreenElement
+    || document.msFullscreenElement || null;
+
+  // 不支持也要给个说法：只把按钮灰掉而不解释，玩家会以为这功能没做完。
+  // supported 这枚标记不能省：下面 sync() 每次都会重写 title，不挡住的话，装的时候刚写
+  // 进去的人话原因会被随后的 sync() 立刻抹成"全屏 (F)"——禁用就变成一句没有理由的禁用。
+  let supported = !!req;
+  const unsupported = () => {
+    supported = false;
+    btn.disabled = true;
+    btn.title = '这个浏览器不提供元素全屏（iOS Safari 请用「添加到主屏幕」独立打开）';
+  };
+  if (!req) unsupported();
+
+  // fullscreen 返回 Promise，被拒时必须吃掉：iOS Safari 对多数非 video 元素直接拒绝，
+  // 让这个 rejection 冒泡出去会变成一条未捕获错误，整局游戏跟着挂。
+  const settle = (p) => { if (p && p.catch) p.catch(unsupported); };
+
+  // 进出都能走：已经全屏时这次调用是退出，不是"再进一次"。
+  function toggle() {
+    try {
+      if (current()) {
+        if (exit) settle(exit.call(document));
+      } else if (req) {
+        settle(req.call(root));
+      } else {
+        unsupported();
+      }
+    } catch (e) {
+      unsupported();
+    }
+  }
+
+  // Esc 和系统手势退出都不经过我们的代码，按钮状态只能靠 fullscreenchange 回写，
+  // 否则用户已经退出、HUD 还停在"退出全屏"，下一次点击反而会重新进全屏。
+  function sync() {
+    const on = !!current();
+    btn.setAttribute('aria-pressed', String(on));
+    btn.textContent = on ? "退出全屏" : "全屏";
+    if (supported) btn.title = "全屏" + '（F）';
+    const body = document.body;
+    if (body && body.classList) body.classList.toggle('fullscreen', on);
+  }
+
+  btn.addEventListener('click', toggle);
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'f' && ev.key !== 'F') return;
+    const t = ev.target;
+    // 盘号 / 种子这类输入框里打字不能触发全屏，否则玩家输 seed 输到一半屏幕没了。
+    if (t && /input|textarea|select/i.test(t.tagName || '')) return;
+    if (ev.repeat || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    ev.preventDefault();
+    toggle();
+  });
+  window.addEventListener('fullscreenchange', sync);
+  window.addEventListener('webkitfullscreenchange', sync);
+  window.addEventListener('MSFullscreenChange', sync);
+  sync();
+})();
+
+// ---- 暂停：真的把仿真冻住 ----
+//
+// 本仓唯一持续推进的仿真是耗时时钟（startedAt 跟 Date.now 走，ticker 是它唯一心跳）。
+// setPaused(true) 调 stopClock()：baseElapsed 落账、startedAt 归 0、ticker 停，
+// 此后 clock() 恒等于 baseElapsed，墙钟再走多久都加不上去。
+// setPaused(false) 调 startClock()：startedAt 复位成"从现在起"，
+// 所以恢复后的第一帧不会把暂停期间憋下的墙钟一次性灌进来（没有 dt 尖峰）。
+//
+// 用 var 而不是 let：本块在文件末尾，而 startClock() 可能在它之前就被 begin() 调过；
+// let 声明提升不到初始化，TDZ 会直接抛 ReferenceError。
+var paused = false;
+function setPaused(v) {
+  v = !!v;
+  if (v === paused) return paused;
+  if (v) stopClock(); else startClock();
+  paused = v;
+  var b = document.getElementById('btn-pause');
+  if (b) {
+    b.setAttribute('aria-pressed', String(paused));
+    b.textContent = paused ? '继续' : '暂停';
+    b.title = paused ? '继续 (P)' : '暂停 (P)';
+  }
+  return paused;
+}
+function togglePause() { return setPaused(!paused); }
+function isPaused() { return paused; }
+
+document.getElementById('btn-pause').addEventListener('click', togglePause);
+window.addEventListener('keydown', function (ev) {
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (ev.target && /input|textarea|select/i.test(ev.target.tagName)) return;
+  var k = ev.key;
+  if (k === 'p' || k === 'P' || k === ' ') { ev.preventDefault(); togglePause(); }
+});
