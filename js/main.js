@@ -55,7 +55,6 @@ let stroke = null;
 let startedAt = 0;
 let baseElapsed = 0;
 let ticker = 0;
-let paused = false;
 let selectedTier = TIERS[0].key;
 
 // The one animation clock. Everything that moves on the canvas is a pulse with an age, and the
@@ -194,58 +193,11 @@ function clearPausedUi() {
   el.time.closest('.chip')?.classList.remove('paused');
 }
 
-function setPaused(v) {
-  const want = !!v;
-  if (want && (!game || game.status === 'won')) return paused;
-  const next = want;
-  if (next === paused) return paused;
-  paused = next;
-  if (paused) {
-    if (stroke) {
-      unpreview();
-      stroke = null;
-    }
-    stopClock();
-  } else if (!el.viewGame.hidden && game && game.status !== 'won') {
-    // 只在"这一局还在盘上"时把表重新走起来：胜利结算之后、或者已经回了选档，都不许复活计时。
-    startClock();
-  }
-  if (paused) {
-    el.pauseVeil.hidden = false;
-    el.btnPause.setAttribute('aria-pressed', 'true');
-    el.btnPause.textContent = '继续';
-    el.time.closest('.chip')?.classList.add('paused');
-  } else {
-    clearPausedUi();
-  }
-  syncStats();
-  return paused;
-}
 
 // ---- restart the same board ----------------------------------------------------
 // 换一局 makes a new puzzle; 重开 puts *this* one back on the table empty. Everything a run can
 // accumulate has to be put down: the clock, the undo history, the ink, the hint cursor, the
 // in-flight stroke, every animation pulse and the pause flag.
-function restart() {
-  if (!game) return null;
-  const puzzle = game.puzzle;
-  game = new Game(puzzle);
-  paused = false;
-  clearPausedUi();
-  el.winVeil.hidden = true;
-  resetFx();
-  stroke = null;
-  baseElapsed = 0;
-  startedAt = 0;
-  setMode(TENT);
-  el.hintRule.textContent = '提示理由';
-  el.hintLine.textContent = '按 提示 会说出当前能推的一格，以及它依据哪条规则。';
-  startClock();
-  syncAll();
-  flushResume();
-  renderResumeCard();
-  return game;
-}
 
 // ---- fullscreen / how-to -------------------------------------------------------
 function fullscreenHost() {
