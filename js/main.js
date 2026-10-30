@@ -44,7 +44,7 @@ const el = {
   pauseVeil: $('#pause-veil'),
   howtoVeil: $('#howto-veil'),
   btnPause: $('#btn-pause'),
-  btnFull: $('#btn-full'),
+  btnFull: $('#btn-fullscreen'),
   wrap: $('#board-wrap'),
   canvas: $('#board'),
 };
@@ -597,12 +597,7 @@ $('#btn-new').addEventListener('click', () => begin({ tier: game ? game.puzzle.t
 $('#btn-restart').addEventListener('click', restart);
 $('#btn-pause').addEventListener('click', () => setPaused(!paused));
 $('#btn-resume-run').addEventListener('click', () => setPaused(false));
-$('#btn-full').addEventListener('click', (ev) => {
-  toggleFullscreen();
-  syncFullButton();
-  ev.currentTarget.blur();  // 让出焦点，空格键不会被全屏按钮自己再按一次
-});
-$('#btn-howto').addEventListener('click', () => setHowto());
+$('#btn-howto')?.addEventListener('click', () => setHowto());
 $('#btn-howto-close').addEventListener('click', () => setHowto(false));
 $('#btn-menu').addEventListener('click', () => {
   flushResume();
@@ -642,6 +637,15 @@ function startFromMenu() {
 window.addEventListener('keydown', (ev) => {
   if (ev.target && /input|textarea/i.test(ev.target.tagName)) return;
   const k = ev.key.toLowerCase();
+  if (k === '?') {
+    ev.preventDefault();
+    setHowto();
+    return;
+  }
+  if (k === 'escape' && !el.howtoVeil.hidden) {
+    setHowto(false);
+    return;
+  }
   if (k === 'h') useHint();
   else if (k === 'z') undo();
   else if (k === 't') setMode(TENT);

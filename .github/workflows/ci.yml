@@ -28,6 +28,9 @@ jobs:
       - name: Engine tests
         run: node tools/engine-test.mjs
 
+      - name: Docs cite real lines
+        run: node tools/docs-test.mjs
+
       # The ladder is a promise, not a caption: `TIERS[].band` is a selection target, and this
       # step goes red if a tier stops landing in its own band or the medians stop ordering.
       - name: Difficulty ladder is still measured

@@ -119,6 +119,9 @@ if [ -n "${SHOTS:-}" ]; then
 fi
 
 kill $WD 2>/dev/null
+# 文档腿：README 里每条 文件:行号 都要指回真行。纯静态，不占端口、不碰 Chrome。
+echo "=== docs-test ==="
+node tools/docs-test.mjs || FAILED=1
 # 部署集闸：ci.yml 跑这两步、本地整闸以前一次都不跑。缺这一步就是「本地全绿、线上 404 自己的
 # manifest / sw.js / 图标」这一整类坏法。它不碰 Chrome，也不读页面，纯查产物。
 echo "=== deploy-set ==="

@@ -31,11 +31,13 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSEMBLE = 'tools/assemble-site.sh';
 // R 段实际检查的路径条数。改页面/清单会改变它——那正是要它变的时候；没改页面却掉了，
 // 说明引用解析不出来的那部分被悄悄放过了。对着 DEPLOY_SET_DUMP=1 的出处表能逐条核。
-const EXPECT_CHECKS = 25;
+// 本轮重钉：css/studio.css 的内联 data: URI 自带引号，旧的 url() 切法把它劈出假路径 css/%23n，
+// 多算一条引用与一条断言；掩码后真实是 33 条引用、52 条断言。
+const EXPECT_CHECKS = 33;
 // 全绿时这个闸实际跑的断言条数（W/R/P 三段之和）。钉住它，「少一条断言」就不可能是绿的：
 // 删掉 manifest 里的一张图标会同时少一条 R10 与那张的 P1/P2 两行——那条路径缺文件本来就该红，
 // 但 rows 能漂就是闸在缩水的信号，所以两个数一起钉。
-const EXPECT_ROWS = 44;
+const EXPECT_ROWS = 52;
 
 let rows = 0;
 const fails = [];
@@ -251,7 +253,9 @@ for (let k = 0; k < refs.length; k += 1) {
     continue;
   }
   if (r.endsWith('.css')) {
-    for (const m of stripComments(text, true).matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
+    // 内联的 data: URI 自带引号，按 url() 切会把它们劈成几截，留下 css/%23n 这种假产物路径。
+    const css = text.replace(/url\(\s*(['"])data:[\s\S]*?\1\s*\)/gi, 'url(data:masked)');
+    for (const m of stripComments(css, true).matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
       push(r, m[1], dirOf(r));
     }
     continue;

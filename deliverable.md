@@ -31,14 +31,15 @@ npm run electron     # 桌面壳（electron/main.cjs，同一份代码）
 | 整仓门禁 | `bash tools/verify.sh` |
 | 单元/规则测试 | `npm test` |
 | npm verify | `npm run verify` |
+| 文档腿 | `node tools/docs-test.mjs` |
 
 ## 规模
 
 | 指标 | 读数 |
 | --- | ---: |
-| 跟踪文件 | 62 |
-| 应用代码 | 3,750 行（JS 2,954 / CSS 597 / HTML 199） |
-| 测试/工具文件 | 8 个 |
+| 跟踪文件 | 63 |
+| 应用代码 | 3,771 行（JS 2,958 / CSS 614 / HTML 199） |
+| 测试/工具文件 | 9 个 |
 | 依赖 | `dependencies` 0 / `devDependencies` 1 |
 | 位图资产（不含 shots） | 26 个 / 524 KB |
 
