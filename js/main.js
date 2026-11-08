@@ -378,7 +378,7 @@ function begin({ tier = 'trainee', seed = null, resume = null } = {}) {
 function restart() {
   if (!game) return null;
   game.resetAll();               // 盘面 + steps + moves + hints + cursor + status + mode + lastHint
-  pulse = null;                  // 上一条提示留下的高亮，属于上一局
+  fx.pulses = [];               // 上一条提示留下的高亮，属于上一局
   stroke = null;                 // 上一次没画完的拖拽手势
   el.winVeil.hidden = true;      // 结算遮罩收起：上一局赢了的遮罩不能压在重开后的盘上
   baseElapsed = 0;               // 耗时归零
